@@ -1,6 +1,7 @@
 from Xlib.X import WhenMapped
 import Xlib.display
 import subprocess
+import time
 
 class Rect:
     def __init__(self, x, y, width, height):
@@ -12,8 +13,16 @@ class Rect:
     def center(self):
         return (self.x + self.width / 2, self.y + self.height / 2)
 
+    def topleft(self):
+        return (self.x, self.y)
+
     def __repr__(self):
         return f"(x: {self.x}, y: {self.y}, width: {self.width}, height: {self.height})"
+
+    def __eq__(self, rect):
+        if type(rect) != type(self):
+            return False
+        return rect.x == self.x and rect.y == self.y and rect.width == self.width and rect.height == self.height
 
 class Window:
 
@@ -21,6 +30,7 @@ class Window:
 
     def __init__(self, window, id):
         self.window = window
+        self.grabbed = False
         self.id = id
 
     @staticmethod
@@ -41,6 +51,8 @@ class Window:
 
     @staticmethod
     def get_all(workspace=None):
+        t = time.time()
+
         root = Window.get_root()
         window_list = list(root.get_full_property(
             Window.display.intern_atom("_NET_CLIENT_LIST"), 
@@ -59,6 +71,10 @@ class Window:
                 ret.append(Window(window, window_id))
         return ret
 
+    @staticmethod
+    def get_display():
+        return Window.display
+
     def get_frame(self):
         """ Returns 4-tuple (frame_left_thickness, frame_right_thickness, frame_top_thickness, frame_bottom_thickness) """
         window_frame = self.window.get_full_property(Window.display.intern_atom("_NET_FRAME_EXTENTS"), Xlib.X.AnyPropertyType).value
@@ -73,14 +89,24 @@ class Window:
 
     def get_geometry(self):
         win = self.window
+        coords = Window.get_root().translate_coords(win, 0, 0)
         geom = win.get_geometry()
-        (x, y) = (geom.x, geom.y)
-        while True:
-            parent = win.query_tree().parent
-            pgeom = parent.get_geometry()
-            x += pgeom.x
-            y += pgeom.y
-            if parent.id == Window.get_root().id:
-                break
-            win = parent
-        return Rect(x, y, geom.width, geom.height)
+        ret = Rect(coords.x, coords.y, geom.width, geom.height)
+        print(ret)
+        return ret
+
+    def get_property(self, property):
+        try:
+            result = self.window.get_full_property(self.display.intern_atom(property), Xlib.X.AnyPropertyType)
+            if result == None:
+                return None
+            return result.value[0]
+        except Xlib.error.BadWindow:
+            print("Window does not exist anymore")
+            return False
+
+    def get_workspace(self):
+        return self.get_property("_NET_WM_DESKTOP")
+
+    def is_normal(self):
+        return self.get_property("_NET_WM_WINDOW_TYPE") == self.display.intern_atom("_NET_WM_WINDOW_TYPE_NORMAL")
