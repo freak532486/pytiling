@@ -38,6 +38,7 @@ class Main:
         if window.is_normal():
             workspace = window.get_workspace()
             window.window.change_attributes(event_mask = Xlib.X.StructureNotifyMask | Xlib.X.FocusChangeMask)
+            window.lower_to_bottom()
             if workspace not in self.layout_dict:
                 self.layout_dict[workspace] = layouts.MasterSlaveDivider([], Window.get_root_geom(workspace), gaps = self.gaps)
             self.layout_dict[workspace].add_windows([window])

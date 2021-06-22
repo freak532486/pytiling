@@ -1,5 +1,6 @@
 from Xlib.X import WhenMapped
 import Xlib.display
+from Xlib.protocol.event import ClientMessage
 import subprocess
 import time
 
@@ -103,12 +104,24 @@ class Window:
             result = self.window.get_full_property(self.display.intern_atom(property), Xlib.X.AnyPropertyType)
             if result == None:
                 return None
-            return result.value[0]
+            return result.value
+        except Xlib.error.BadWindow:
+            return False
+
+    def lower_to_bottom(self):
+        subprocess.run(f"wmctrl -ir {hex(self.id)} -b add,below", shell = True )
+    
+    def set_property(self, property, format, data):
+        try:
+            self.window.change_property(self.display.intern_atom(property), Xlib.X.AnyPropertyType, format, data)
+            return True
         except Xlib.error.BadWindow:
             return False
 
     def get_workspace(self):
-        return self.get_property("_NET_WM_DESKTOP")
+        return self.get_property("_NET_WM_DESKTOP")[0]
 
     def is_normal(self):
-        return self.get_property("_NET_WM_WINDOW_TYPE") == self.display.intern_atom("_NET_WM_WINDOW_TYPE_NORMAL")
+        if self.get_property("_NET_WM_WINDOW_TYPE") == None:
+            return False
+        return self.get_property("_NET_WM_WINDOW_TYPE")[0] == self.display.intern_atom("_NET_WM_WINDOW_TYPE_NORMAL")

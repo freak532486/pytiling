@@ -6,10 +6,10 @@ class Layout:
 
     def __init__(self, windows, screen: Rect):
         self.windows = windows.copy()
+        self.regions = self.calculate_regions(len(windows))
         self.regions = []
         self.screen = screen
         self.__grab_region = None
-        self.calculate_regions()
         self.assign_and_move()
 
     def __dist(self, a, b):
@@ -40,16 +40,24 @@ class Layout:
         return min_region
 
     def add_windows(self, windows):
+        new_windows = self.windows.copy()
         for window in windows:
-            self.windows.append(window)
-        self.calculate_regions()
+            if window.id not in list(map(lambda window : window.id, self.windows)):
+                new_windows.append(window)
+        new_regions = self.calculate_regions(len(new_windows)) 
+        self.regions = new_regions
+        self.windows = new_windows
         self.assign_and_move()
 
     def remove_windows(self, windows):
+        new_windows = self.windows.copy()
         for window in windows:
-            if window in self.windows:
-                 self.windows.remove(window)
-        self.calculate_regions()
+            for _window in self.windows:
+                if _window.id ==  window.id:
+                    new_windows.remove(_window)
+        new_regions = self.calculate_regions(len(new_windows)) 
+        self.regions = new_regions
+        self.windows = new_windows
         self.assign_and_move() 
 
     # Override this for new layouts
@@ -102,26 +110,26 @@ class MasterSlaveDivider(Layout):
         super().__init__(windows, screen)
         
 
-    def calculate_regions(self):
-        n = len(self.windows)
-        self.regions = [] 
+    def calculate_regions(self, n):
+        regions = [] 
         gaps = self.gaps
         master_ratio = self.master_ratio
         # Edge cases 
         if n == 0:
-            self.regions = []
-            return
+            regions = []
+            return regions
         if n == 1:
-            self.regions = [Rect(gaps, gaps, self.screen.width - 2 * gaps, self.screen.height - 2 * gaps)]
-            return
+            regions = [Rect(gaps, gaps, self.screen.width - 2 * gaps, self.screen.height - 2 * gaps)]
+            return regions
         # Now that the divide by 0 is out of the way...
         master_width = self.screen.width * master_ratio - 1.5 * gaps
         slave_width = self.screen.width * (1 - master_ratio) - 1.5 * gaps
         master_height = self.screen.height - 2 * gaps
         slave_height = (self.screen.height - n * gaps) / (n - 1)
-        self.regions.append(Rect(gaps, gaps, master_width, master_height))
+        regions.append(Rect(gaps, gaps, master_width, master_height))
         for i in range(n - 1):
-            self.regions.append(Rect(2 * gaps + master_width, gaps + (slave_height + gaps) * i, slave_width, slave_height))
+            regions.append(Rect(2 * gaps + master_width, gaps + (slave_height + gaps) * i, slave_width, slave_height))
+        return regions
 
 class ColumnDivider(Layout):
 
