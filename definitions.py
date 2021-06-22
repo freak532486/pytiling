@@ -34,15 +34,19 @@ class Window:
         self.id = id
 
     @staticmethod
+    def from_id(id):
+        return Window(Window.display.create_resource_object("window", id), id)
+
+    @staticmethod
     def get_root():
         return Window.display.screen().root
 
     @staticmethod
-    def get_root_size(workspace):
+    def get_root_geom(workspace):
         geometry_array = Window.get_root().get_full_property(Window.display.intern_atom("_NET_WORKAREA"), Xlib.X.AnyPropertyType).value
         width = geometry_array[4 * workspace + 2]
         height = geometry_array[4 * workspace + 3]
-        return (width, height)
+        return Rect(0, 0, width, height)
 
     @staticmethod
     def get_current_workspace():
@@ -92,7 +96,6 @@ class Window:
         coords = Window.get_root().translate_coords(win, 0, 0)
         geom = win.get_geometry()
         ret = Rect(coords.x, coords.y, geom.width, geom.height)
-        print(ret)
         return ret
 
     def get_property(self, property):
@@ -102,7 +105,6 @@ class Window:
                 return None
             return result.value[0]
         except Xlib.error.BadWindow:
-            print("Window does not exist anymore")
             return False
 
     def get_workspace(self):

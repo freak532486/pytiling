@@ -7,8 +7,9 @@ class Layout:
     def __init__(self, windows, screen: Rect):
         self.windows = windows.copy()
         self.regions = []
+        self.screen = screen
         self.__grab_region = None
-        self.calculate_regions(screen)
+        self.calculate_regions()
         self.assign_and_move()
 
     def __dist(self, a, b):
@@ -21,9 +22,7 @@ class Layout:
         min_window = self.windows[0]
         min_dist = float("inf")
         for window in self.windows:
-            t = time.time()
             window_rect = window.get_geometry()
-            print(f"get_geometry: {1000 * (time.time() - t)} ms")
             window_center = window_rect.topleft()
             if self.__dist(center, window_center) < min_dist:
                 min_window = window
@@ -40,9 +39,22 @@ class Layout:
                 min_region = region
         return min_region
 
+    def add_windows(self, windows):
+        for window in windows:
+            self.windows.append(window)
+        self.calculate_regions()
+        self.assign_and_move()
+
+    def remove_windows(self, windows):
+        for window in windows:
+            if window in self.windows:
+                 self.windows.remove(window)
+        self.calculate_regions()
+        self.assign_and_move() 
+
     # Override this for new layouts
-    def calculate_regions(self, screen):
-        return [screen] * len(self.windows)
+    def calculate_regions(self):
+        return [self.screen] * len(self.windows)
 
     def assign_and_move(self):
         new_windows = []
@@ -50,10 +62,8 @@ class Layout:
             region = self.regions[i]
             t = time.time()
             win = self.__get_closest_window(region)
-            print(f"get_closest: {1000 * (time.time() - t)} ms")
             t = time.time()
             win.move_resize(region)
-            print(f"move_resize: {1000 * (time.time() - t)} ms")
             new_windows.append(win)
             self.windows.remove(win)
         self.windows = new_windows
@@ -92,8 +102,9 @@ class MasterSlaveDivider(Layout):
         super().__init__(windows, screen)
         
 
-    def calculate_regions(self, screen):
+    def calculate_regions(self):
         n = len(self.windows)
+        self.regions = [] 
         gaps = self.gaps
         master_ratio = self.master_ratio
         # Edge cases 
@@ -101,13 +112,13 @@ class MasterSlaveDivider(Layout):
             self.regions = []
             return
         if n == 1:
-            self.regions = [Rect(gaps, gaps, screen.width - 2 * gaps, screen.height - 2 * gaps)]
+            self.regions = [Rect(gaps, gaps, self.screen.width - 2 * gaps, self.screen.height - 2 * gaps)]
             return
         # Now that the divide by 0 is out of the way...
-        master_width = screen.width * master_ratio - 1.5 * gaps
-        slave_width = screen.width * (1 - master_ratio) - 1.5 * gaps
-        master_height = screen.height - 2 * gaps
-        slave_height = (screen.height - n * gaps) / (n - 1)
+        master_width = self.screen.width * master_ratio - 1.5 * gaps
+        slave_width = self.screen.width * (1 - master_ratio) - 1.5 * gaps
+        master_height = self.screen.height - 2 * gaps
+        slave_height = (self.screen.height - n * gaps) / (n - 1)
         self.regions.append(Rect(gaps, gaps, master_width, master_height))
         for i in range(n - 1):
             self.regions.append(Rect(2 * gaps + master_width, gaps + (slave_height + gaps) * i, slave_width, slave_height))
@@ -124,7 +135,7 @@ class ColumnDivider(Layout):
     def calculate_regions(self, screen):
         n = len(self.windows)
         gaps = self.gaps
-        height = screen.height - 2 * gaps
-        width = (screen.width - (n + 1) * gaps) / n
+        height = self.screen.height - 2 * gaps
+        width = (self.screen.width - (n + 1) * gaps) / n
         for i in range(n):
             self.regions.append(Rect(int(gaps + (width + gaps) * i), gaps, int(width), height))

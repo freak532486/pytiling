@@ -8,38 +8,39 @@ from pynput.keyboard import Listener, Key
 class Main:
 
     def __init__(self, gaps = 0, manage_all = False):
-        self.managed_workspace = Window.get_current_workspace()
+        self.layout_dict = {} # Maps workspace number to layout
         self.gaps = gaps
         self.combo_pressed = False
-        root_size = Window.get_root_size(self.managed_workspace)
-        self.root_geom = Rect(0, 0, root_size[0], root_size[1])
-        self.windows = []
         if manage_all:
             self.add_all_windows_from_current_workspace()
-        self.layout = layouts.MasterSlaveDivider(self.windows, self.root_geom, gaps = self.gaps)
+        Window.get_root().change_attributes(event_mask = Xlib.X.SubstructureNotifyMask)
 
     def __get_event_window(self, event):
-        event_window_candidates = [window for window in self.windows if window.window == event.window]
+        event_window_candidates = [window for window in self.get_current_layout().windows if window.window == event.window]
         if len(event_window_candidates) == 0:
             return None
         return event_window_candidates[0]
+  
+    def get_current_layout(self):
+        ws = Window.get_current_workspace()
+        if ws not in self.layout_dict:
+            self.layout_dict[ws] = layouts.MasterSlaveDivider([], Window.get_root_geom(ws), gaps = self.gaps)
+        return self.layout_dict[ws]
 
     def add_all_windows_from_current_workspace(self):
-        self.windows = Window.get_all(workspace = self.managed_workspace)
+        windows = Window.get_all(workspace = Window.get_current_workspace())
 
-        Window.get_root().change_attributes(event_mask = Xlib.X.SubstructureNotifyMask)
-        for window in self.windows:
+        for window in windows:
             window.window.change_attributes(event_mask = Xlib.X.StructureNotifyMask | Xlib.X.FocusChangeMask)
+            self.add_managed_window(window)
 
-    def relayout(self):
-        self.layout = layouts.MasterSlaveDivider(self.windows, self.root_geom, gaps = self.gaps)
-
-    def add_managed_window(self, window_id):
-        window = Window(Window.display.create_resource_object("window", window_id), window_id)
-        if window.is_normal() and window.get_workspace() == self.managed_workspace:
+    def add_managed_window(self, window):
+        if window.is_normal():
+            workspace = window.get_workspace()
             window.window.change_attributes(event_mask = Xlib.X.StructureNotifyMask | Xlib.X.FocusChangeMask)
-            self.windows.append(window)
-            self.relayout()
+            if workspace not in self.layout_dict:
+                self.layout_dict[workspace] = layouts.MasterSlaveDivider([], Window.get_root_geom(workspace), gaps = self.gaps)
+            self.layout_dict[workspace].add_windows([window])
 
     def run(self):
         while True:
@@ -49,7 +50,7 @@ class Main:
                     event_window = self.__get_event_window(event)
                     if event_window == None:
                         continue
-                    self.layout.on_move(event_window)
+                    self.get_current_layout().on_move(event_window)
 
                 if event.type == Xlib.X.FocusOut:
                     if event.mode == Xlib.X.NotifyGrab:
@@ -57,7 +58,7 @@ class Main:
                         if event_window == None:
                             continue
                         event_window.grabbed = True
-                        self.layout.on_grab(event_window)
+                        self.get_current_layout().on_grab(event_window)
 
                 if event.type == Xlib.X.FocusIn:
                     if event.mode == Xlib.X.NotifyUngrab:
@@ -65,16 +66,15 @@ class Main:
                         if event_window == None:
                             continue
                         event_window.grabbed = False
-                        self.layout.on_drop(event_window)
+                        self.get_current_layout().on_drop(event_window)
 
                 if event.type == Xlib.X.DestroyNotify:
                     destroyed_window_id = event.window.id
-                    for window in self.windows:
+                    for window in self.get_current_layout().windows:
                         if window.id == destroyed_window_id:
-                            self.windows.remove(window)
-                            self.layout = layouts.MasterSlaveDivider(self.windows, self.root_geom, gaps = self.gaps)
+                            self.get_current_layout().remove_windows([window])
 
-main_thread = Main(gaps = 20, manage_all = True)
+main_thread = Main(gaps = 20, manage_all = False)
 
 key_combo = { Key.cmd, Key.space }
 current = set()
@@ -92,7 +92,7 @@ def on_release(key):
 def get_window_id_interactive():
     output = subprocess.check_output("xwininfo -int", shell = True, encoding="UTF-8")
     id = int(re.search("id: (\d*)", output).group(1))
-    main_thread.add_managed_window(id)
+    main_thread.add_managed_window(Window.from_id(id))
 
 
 Listener(on_press = on_press, on_release = on_release).start()
