@@ -3,6 +3,7 @@ import Xlib.display
 from Xlib.protocol.event import ClientMessage
 import subprocess
 import time
+import inspect
 
 class Rect:
     def __init__(self, x, y, width, height):
@@ -96,7 +97,8 @@ class Window:
         win = self.window
         coords = Window.get_root().translate_coords(win, 0, 0)
         geom = win.get_geometry()
-        ret = Rect(coords.x, coords.y, geom.width, geom.height)
+        fl, fr, ft, fb = self.get_frame()
+        ret = Rect(coords.x - fl, coords.y - ft, geom.width + fl + fr, geom.height + ft + fb)
         return ret
 
     def get_property(self, property):
@@ -110,6 +112,9 @@ class Window:
 
     def lower_to_bottom(self):
         subprocess.run(f"wmctrl -ir {hex(self.id)} -b add,below", shell = True )
+
+    def raise_to_normal(self):
+        subprocess.run(f"wmctrl -ir {hex(self.id)} -b remove,below", shell = True )
     
     def set_property(self, property, format, data):
         try:

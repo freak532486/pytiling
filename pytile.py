@@ -11,6 +11,8 @@ class Main:
         self.layout_dict = {} # Maps workspace number to layout
         self.gaps = gaps
         self.combo_pressed = False
+        self.added_windows = []
+        self.removed_windows = []
         if manage_all:
             self.add_all_windows_from_current_workspace()
         Window.get_root().change_attributes(event_mask = Xlib.X.SubstructureNotifyMask)
@@ -43,8 +45,27 @@ class Main:
                 self.layout_dict[workspace] = layouts.MasterSlaveDivider([], Window.get_root_geom(workspace), gaps = self.gaps)
             self.layout_dict[workspace].add_windows([window])
 
+    def toggle_window(self, window):
+        if self.get_current_layout().has_window(window):
+            self.removed_windows.append(window)
+        else:
+            self.added_windows.append(window)
+
     def run(self):
         while True:
+            if len(self.added_windows) != 0:
+                for window in self.added_windows:
+                    self.add_managed_window(window)
+                self.added_windows = []
+            if len(self.removed_windows) != 0:
+                for window in self.removed_windows:
+                    window.raise_to_normal()
+                    self.get_current_layout().remove_windows([window])
+                self.removed_windows = []
+            
+            if Window.display.pending_events() == 0:
+                time.sleep(0.01)
+                continue
             event = Window.display.next_event()
             if event != None:
                 if event.type == Xlib.X.ConfigureNotify:
@@ -73,11 +94,11 @@ class Main:
                     destroyed_window_id = event.window.id
                     for window in self.get_current_layout().windows:
                         if window.id == destroyed_window_id:
-                            self.get_current_layout().remove_windows([window])
+                            self.toggle_window(window)
 
 main_thread = Main(gaps = 20, manage_all = False)
 
-key_combo = { Key.cmd, Key.space }
+key_combo = { Key.cmd, Key.alt }
 current = set()
 
 def on_press(key):
@@ -93,7 +114,7 @@ def on_release(key):
 def get_window_id_interactive():
     output = subprocess.check_output("xwininfo -int", shell = True, encoding="UTF-8")
     id = int(re.search("id: (\d*)", output).group(1))
-    main_thread.add_managed_window(Window.from_id(id))
+    main_thread.toggle_window(Window.from_id(id))
 
 
 Listener(on_press = on_press, on_release = on_release).start()

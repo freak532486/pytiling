@@ -12,32 +12,38 @@ class Layout:
         self.__grab_region = None
         self.assign_and_move()
 
-    def __dist(self, a, b):
+    def _dist(self, a, b):
         ax, ay = a
         bx, by = b
         return (ax - bx) * (ax - bx) + (ay - by) * (ay - by)
 
-    def __get_closest_window(self, rect: Rect):
+    def _get_closest_window(self, rect: Rect):
         center = rect.topleft()
         min_window = self.windows[0]
         min_dist = float("inf")
         for window in self.windows:
             window_rect = window.get_geometry()
             window_center = window_rect.topleft()
-            if self.__dist(center, window_center) < min_dist:
+            if self._dist(center, window_center) < min_dist:
                 min_window = window
-                min_dist = self.__dist(center, window_center)
+                min_dist = self._dist(center, window_center)
         return min_window
 
-    def __get_closest_region(self, window: Window):
+    def _get_closest_region(self, window: Window):
         min_dist = float("inf")
         min_region = self.regions[0]
         for region in self.regions:
-            dist = self.__dist(region.topleft(), window.get_geometry().topleft())
+            dist = self._dist(region.topleft(), window.get_geometry().topleft())
             if dist < min_dist:
                 min_dist = dist
                 min_region = region
         return min_region
+
+    def _get_corresponding_region(self, window):
+        for i in range(len(self.windows)):
+            if self.windows[i].id == window.id:
+                return self.regions[i]
+        return None
 
     def add_windows(self, windows):
         new_windows = self.windows.copy()
@@ -58,7 +64,7 @@ class Layout:
         new_regions = self.calculate_regions(len(new_windows)) 
         self.regions = new_regions
         self.windows = new_windows
-        self.assign_and_move() 
+        self.assign_and_move()
 
     # Override this for new layouts
     def calculate_regions(self):
@@ -69,7 +75,7 @@ class Layout:
         for i in range(len(self.regions)):
             region = self.regions[i]
             t = time.time()
-            win = self.__get_closest_window(region)
+            win = self._get_closest_window(region)
             t = time.time()
             win.move_resize(region)
             new_windows.append(win)
@@ -82,7 +88,14 @@ class Layout:
     def on_move(self, window: Window):
         if not window.grabbed:
             return
-        closest_region = self.__get_closest_region(window)
+        old_geom = self._get_corresponding_region(window)
+        new_geom = window.get_geometry()
+        dx, dy = (new_geom.x - old_geom.x, new_geom.y - old_geom.y)
+        dw, dh = (new_geom.width - old_geom.width, new_geom.height - old_geom.height)
+        if (dx == 0 and dy == 0) or (dx == -dw and dy == 0) or (dx == 0 and dy == -dh) or (dx == -dw and dy == -dh):
+            self.on_resize(window, dx, dy, dw, dh)
+            return
+        closest_region = self._get_closest_region(window)
         if closest_region != self.__grab_region:
             corresponding_window_index = self.regions.index(closest_region)
             grabbed_window_index = self.windows.index(window)
@@ -91,6 +104,13 @@ class Layout:
             self.__grab_region = closest_region
             self.windows[corresponding_window_index] = window
             self.windows[grabbed_window_index] = corresponding_window
+
+    def has_window(self, window: Window):
+        return window.id in list(map(lambda w : w.id, self.windows))
+
+    # Override in own layout
+    def on_resize(self, window: Window):
+        return
 
     def on_drop(self, window: Window):
         if self.__grab_region == None:
@@ -131,19 +151,43 @@ class MasterSlaveDivider(Layout):
             regions.append(Rect(2 * gaps + master_width, gaps + (slave_height + gaps) * i, slave_width, slave_height))
         return regions
 
-class ColumnDivider(Layout):
-
-    gaps = None
-
-    def __init__(self, windows, screen: Rect, gaps = 0):
-        self.gaps = gaps
-        super().__init__(windows, screen)
-        
-
-    def calculate_regions(self, screen):
-        n = len(self.windows)
-        gaps = self.gaps
-        height = self.screen.height - 2 * gaps
-        width = (self.screen.width - (n + 1) * gaps) / n
-        for i in range(n):
-            self.regions.append(Rect(int(gaps + (width + gaps) * i), gaps, int(width), height))
+    def on_resize(self, window: Window, dx: int, dy: int, dw: int, dh: int):
+        is_master = self.regions.index(self._get_corresponding_region(window)) == 0
+        if is_master:
+            if dx != 0:
+                return
+            self.regions[0].width += dw
+            for i in range(1, len(self.windows)):
+                self.regions[i].width -= dw
+                self.regions[i].x += dw
+                self.windows[i].move_resize(self.regions[i])
+        else:
+            index = self.regions.index(self._get_corresponding_region(window))
+            if dx != 0: # Width resize on left handle
+                self.regions[0].width -= dw
+                self.windows[0].move_resize(self.regions[0])
+                for i in range(1, len(self.windows)):
+                    window_to_adjust = self.windows[i]
+                    region_to_adjust = self.regions[i]
+                    region_to_adjust.x += dx
+                    region_to_adjust.width += dw
+                    if i != index:
+                        window_to_adjust.move_resize(self.regions[i])
+            if dh != 0:
+                top_bar_grabbed = dy != 0
+                if top_bar_grabbed:
+                    index_to_adjust = index - 1 # Region above resized window
+                    if index_to_adjust < 1:
+                        return
+                    self.regions[index].y += dy
+                    self.regions[index].height += dh
+                    self.regions[index_to_adjust].height -= dh
+                    self.windows[index_to_adjust].move_resize(self.regions[index_to_adjust])
+                else:
+                    index_to_adjust = index + 1 # Region below resized window
+                    if index_to_adjust >= len(self.regions):
+                        return
+                    self.regions[index].height += dh
+                    self.regions[index_to_adjust].height -= dh
+                    self.regions[index_to_adjust].y += dh
+                    self.windows[index_to_adjust].move_resize(self.regions[index_to_adjust])
