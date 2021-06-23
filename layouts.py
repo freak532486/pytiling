@@ -1,4 +1,3 @@
-from os import close
 from definitions import *
 import time
 
@@ -67,8 +66,8 @@ class Layout:
         self.assign_and_move()
 
     # Override this for new layouts
-    def calculate_regions(self):
-        return [self.screen] * len(self.windows)
+    def calculate_regions(self, n):
+        return [self.screen] * n
 
     def assign_and_move(self):
         new_windows = []

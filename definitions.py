@@ -1,9 +1,6 @@
-from Xlib.X import WhenMapped
 import Xlib.display
-from Xlib.protocol.event import ClientMessage
 import subprocess
 import time
-import inspect
 
 class Rect:
     def __init__(self, x, y, width, height):
